@@ -67,6 +67,7 @@ docker compose up --exit-code-from verify verify
 | 切换场次 → 旧 epoch 迟到包隔离、新场序列无缺口 | pytest + Playwright |
 | 断网排队、恢复后按序确认 | Playwright（`setOffline`） |
 | 冲突项保持待处理并显示期望序号 | Vitest + Playwright |
+| 切场后旧场状态快照迟到 → 画面停留新场、新场指令不误隔离 | Vitest + Playwright |
 | 数据库不变量（无缺口、无重复 operation_id） | pytest 直连 PostgreSQL |
 
 ## 本地开发（无 Docker）

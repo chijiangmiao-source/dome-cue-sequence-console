@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyConfirmation,
   buildOp,
+  createRefreshGate,
   emptyQueue,
   enqueue,
   mergeServerState,
@@ -186,5 +187,56 @@ describe("removeOp", () => {
   it("按 operation_id 出队", () => {
     const q: QueueState = { pending: [mkOp(1), mkOp(2)], isolated: [] };
     expect(removeOp(q, "op-1").pending.map((o) => o.operation_id)).toEqual(["op-2"]);
+  });
+});
+
+describe("createRefreshGate：切场后旧场迟到快照不得落地", () => {
+  it("导入（权威变更）使在途请求失效", () => {
+    const gate = createRefreshGate();
+    const staleTicket = gate.issue(); // 旧场时代发出的状态请求
+    gate.invalidate(); // 导入新场
+    expect(gate.accept(staleTicket)).toBe(false); // 迟到旧场快照 → 拒绝
+    const freshTicket = gate.issue(); // 新场时代发出的请求
+    expect(gate.accept(freshTicket)).toBe(true);
+  });
+
+  it("乱序到达：较旧响应不得覆盖较新响应", () => {
+    const gate = createRefreshGate();
+    const t1 = gate.issue();
+    const t2 = gate.issue();
+    expect(gate.accept(t2)).toBe(true); // 较新响应先落地
+    expect(gate.accept(t1)).toBe(false); // 较旧响应迟到 → 拒绝
+  });
+
+  it("同一票据不可重复落地", () => {
+    const gate = createRefreshGate();
+    const t = gate.issue();
+    expect(gate.accept(t)).toBe(true);
+    expect(gate.accept(t)).toBe(false);
+  });
+
+  it("旧场迟到快照被门禁拒绝 → 新场指令不被误隔离、画面停留新场", () => {
+    const gate = createRefreshGate();
+    const staleTicket = gate.issue(); // 切场前发出的轮询
+
+    // 新场生效（导入响应已落地）
+    gate.invalidate();
+    const newSession = mkSession(0);
+    newSession.epoch = "epoch-b";
+    const queue: QueueState = {
+      pending: [mkOp(1, "op-b1", "epoch-b")],
+      isolated: [],
+    };
+
+    // 旧场快照迟到：门禁拒绝 → 不 setState、不 reconcile
+    expect(gate.accept(staleTicket)).toBe(false);
+
+    // 新场时代的正常轮询落地后，新场指令保持待处理、零隔离
+    const freshTicket = gate.issue();
+    expect(gate.accept(freshTicket)).toBe(true);
+    const q2 = reconcile(newSession, queue);
+    expect(q2.pending).toHaveLength(1);
+    expect(q2.pending[0].epoch).toBe("epoch-b");
+    expect(q2.isolated).toHaveLength(0);
   });
 });

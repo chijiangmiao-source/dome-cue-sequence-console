@@ -143,6 +143,53 @@ test.describe.serial("穹幕保险台端到端", () => {
     await expect(rows.nth(1)).toContainText("b-whale");
   });
 
+  test("切场后旧场状态快照延迟返回，画面始终停留在新场", async ({ page }) => {
+    await importSession(page, "session-a.json", "A 场 · 曙光");
+    await page.getByTestId("trigger-btn").click();
+    await expect(page.getByTestId("confirmed-row")).toHaveCount(1);
+
+    // 抓取旧场快照（稍后作为“迟到响应”回放）
+    const staleA = await (await page.request.get("/api/state")).json();
+    expect(staleA.session.name).toBe("A 场 · 曙光");
+
+    // 挂起下一次状态轮询（模拟切场前发出、切场后才返回的请求）
+    let held: Route | null = null;
+    await page.route("**/api/state", async (route) => {
+      if (!held) {
+        held = route;
+        return;
+      }
+      await route.continue();
+    });
+    await expect.poll(() => held !== null, { timeout: 10_000 }).toBe(true);
+
+    // 切换到 B 场并确认一条新场提示
+    await importSession(page, "session-b.json", "B 场 · 深海");
+    await page.getByTestId("trigger-btn").click();
+    await expect(page.getByTestId("confirmed-row")).toHaveCount(1);
+    await expect(page.getByTestId("confirmed-row").first()).toContainText(
+      "b-dive",
+    );
+
+    // 旧场快照迟到返回：必须被丢弃，不得回退画面、不得误隔离新场指令
+    await held!.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(staleA),
+    });
+    await page.unroute("**/api/state");
+    await page.waitForTimeout(600); // 给错误实现留出回退窗口
+
+    await expect(page.getByTestId("session-name")).toHaveText("B 场 · 深海");
+    await expect(page.getByTestId("current-seq")).toContainText("1 / 3");
+    await expect(page.getByTestId("confirmed-row")).toHaveCount(1);
+    await expect(page.getByTestId("confirmed-row").first()).toContainText(
+      "b-dive",
+    );
+    await expect(page.getByTestId("isolated-row")).toHaveCount(0);
+    await expect(page.getByTestId("pending-row")).toHaveCount(0);
+  });
+
   test("冲突项保持待处理并显示期望序号", async ({ page, context }) => {
     await importSession(page, "session-c.json", "C 场 · 风暴");
     const state = await (await page.request.get("/api/state")).json();

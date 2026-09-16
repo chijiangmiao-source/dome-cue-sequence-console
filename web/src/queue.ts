@@ -104,7 +104,11 @@ export function applyConfirmation(
 
 /**
  * 合并轮询得到的服务端状态：同一 epoch 下游标只增不减，
- * 迟到的旧快照不得回退画面；epoch 变化（场次切换）以服务端为准。
+ * 迟到的旧快照不得回退画面。
+ *
+ * 注意：跨 epoch 的新旧判定不在此处——随机 epoch 无法比较先后，
+ * 由 createRefreshGate 在响应落地前完成排序（切场后旧场迟到快照
+ * 会在门禁处被丢弃，根本到不了这里）。
  */
 export function mergeServerState(
   prev: StateResponse,
@@ -114,6 +118,45 @@ export function mergeServerState(
   if (prev.session.epoch !== next.session.epoch) return next;
   if (next.session.current_seq < prev.session.current_seq) return prev;
   return next;
+}
+
+/**
+ * 刷新门禁：为每次状态请求发放单调递增票据，响应返回时判定能否落地。
+ *
+ * 解决两类时序竞态：
+ * 1) 乱序到达：较旧请求的响应晚于较新请求返回 → 拒绝落地；
+ * 2) 切场竞态：导入新场（本地权威变更）后，变更前发出的请求即使
+ *    迟到返回旧场快照，也必须丢弃——否则画面会退回旧场，且 reconcile
+ *    会以旧 epoch 误隔离新场队列指令。
+ */
+export interface RefreshGate {
+  /** 发起一次状态请求，返回票据。 */
+  issue(): number;
+  /** 本地权威变更（导入/切换场次）：使所有在途请求的票据失效。 */
+  invalidate(): void;
+  /** 响应返回时判定：true 表示可落地（并记录为最新已应用）。 */
+  accept(ticket: number): boolean;
+}
+
+export function createRefreshGate(): RefreshGate {
+  let issued = 0;
+  let applied = 0;
+  let invalidatedAt = 0;
+  return {
+    issue() {
+      issued += 1;
+      return issued;
+    },
+    invalidate() {
+      invalidatedAt = issued;
+    },
+    accept(ticket: number) {
+      if (ticket <= applied) return false; // 更晚的响应已应用（乱序到达）
+      if (ticket <= invalidatedAt) return false; // 发出后发生了权威变更（迟到旧场快照）
+      applied = ticket;
+      return true;
+    },
+  };
 }
 
 /**

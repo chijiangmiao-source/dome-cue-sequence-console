@@ -4,6 +4,7 @@ import { newOperationId } from "./id";
 import {
   applyConfirmation,
   buildOp,
+  createRefreshGate,
   discardOp,
   emptyQueue,
   enqueue,
@@ -65,6 +66,8 @@ export default function App() {
   const queueRef = useRef(queue);
   queueRef.current = queue;
   const flushingRef = useRef(false);
+  // 刷新门禁：切场后旧场迟到的状态快照不得落地（不得回退画面、不得误隔离新场指令）。
+  const gateRef = useRef(createRefreshGate());
 
   // 队列持久化到浏览器：断网/刷新后指令仍在。
   useEffect(() => {
@@ -76,9 +79,13 @@ export default function App() {
   }, [queue]);
 
   const refresh = useCallback(async (): Promise<StateResponse | null> => {
+    const ticket = gateRef.current.issue();
     try {
       const s = await fetchState();
       setOnline(true);
+      // 迟到/失效响应（切场前的在途请求、乱序到达）直接丢弃：
+      // 不落地、不参与 reconcile，画面始终停留在最新权威状态。
+      if (!gateRef.current.accept(ticket)) return null;
       setState((prev) => mergeServerState(prev, s));
       setQueue((q) => reconcile(s.session, q));
       return s;
@@ -193,6 +200,9 @@ export default function App() {
     }
     try {
       const s = await importSession(v.value);
+      // 导入是本地权威变更：使所有在途状态请求失效，
+      // 之后到达的旧场快照一律丢弃，画面始终停留在新场。
+      gateRef.current.invalidate();
       setOnline(true);
       setState(s);
       setQueue((q) => reconcile(s.session, q));
