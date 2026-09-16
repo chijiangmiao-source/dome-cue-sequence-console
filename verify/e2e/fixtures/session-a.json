@@ -1,0 +1,8 @@
+{
+  "name": "A 场 · 曙光",
+  "cues": [
+    { "n": 1, "cue_id": "a-lights-up", "label": "灯光渐亮" },
+    { "n": 2, "cue_id": "a-narration-1", "label": "旁白第一段" },
+    { "n": 3, "cue_id": "a-starfall", "label": "穹幕星雨" }
+  ]
+}

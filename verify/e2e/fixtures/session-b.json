@@ -1,0 +1,8 @@
+{
+  "name": "B 场 · 深海",
+  "cues": [
+    { "n": 1, "cue_id": "b-dive", "label": "下潜" },
+    { "n": 2, "cue_id": "b-whale", "label": "鲸歌" },
+    { "n": 3, "cue_id": "b-surface", "label": "浮出海面" }
+  ]
+}

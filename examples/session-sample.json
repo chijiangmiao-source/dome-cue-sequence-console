@@ -1,0 +1,9 @@
+{
+  "name": "首场 · 点火仪式",
+  "cues": [
+    { "n": 1, "cue_id": "open-lights", "label": "全场灯光压暗" },
+    { "n": 2, "cue_id": "open-narration", "label": "旁白：开场白" },
+    { "n": 3, "cue_id": "open-dome", "label": "穹幕：星火点亮" },
+    { "n": 4, "cue_id": "open-finale", "label": "全场灯光渐亮" }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "C 场 · 风暴",
+  "cues": [
+    { "n": 1, "cue_id": "c-wind", "label": "风声渐起" },
+    { "n": 2, "cue_id": "c-thunder", "label": "雷鸣" },
+    { "n": 3, "cue_id": "c-calm", "label": "雨过天晴" }
+  ]
+}
